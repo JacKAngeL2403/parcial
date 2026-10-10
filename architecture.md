@@ -1,10 +1,56 @@
-## Diagrama de clases
+# 🏗️ Arquitectura — ACDC Service Manager
+
+El sistema usa una **arquitectura por capas**. Cada capa solo conoce a la que tiene debajo, así que la interfaz nunca toca los archivos JSON ni las reglas del negocio directamente.
+
+## 1. Capas del sistema
+
+| Capa | Carpeta | Qué hace |
+|---|---|---|
+| **Interfaz** | `src/ui/` | Ventana Tkinter, formularios, tabla reutilizable y consola (CLI). |
+| **Servicios** | `src/services/` | `AppService` (casos de uso) y `DataManager` (lectura/escritura de JSON). |
+| **Dominio** | `src/domain/` | Entidades `Cliente`, `Equipo`, `OrdenServicio`, estados y excepciones. |
+| **Datos** | `data/` | Archivos `clientes.json`, `equipos.json` y `ordenes.json`. |
+
+```mermaid
+flowchart TB
+    UI["Interfaz<br/>VentanaPrincipal · Frames · CLI"]
+    SV["Servicios<br/>AppService"]
+    DM["Persistencia<br/>DataManager"]
+    DO["Dominio<br/>Cliente · Equipo · OrdenServicio"]
+    JS[("JSON<br/>data/")]
+
+    UI --> SV
+    SV --> DO
+    SV --> DM
+    DM --> JS
+```
+
+## 2. Flujo de estados de una orden
+
+```mermaid
+stateDiagram-v2
+    [*] --> RECIBIDO
+    RECIBIDO --> EN_DIAGNOSTICO
+    EN_DIAGNOSTICO --> EN_REPARACION: con diagnóstico y costo
+    EN_DIAGNOSTICO --> NO_REPARABLE
+    EN_REPARACION --> REPARADO
+    REPARADO --> ENTREGADO: registrar_entrega()
+    NO_REPARABLE --> [*]
+    ENTREGADO --> [*]
+```
+
+## 3. Diagramas de clases
+
+Para que se lean bien, el diagrama está dividido en tres: **dominio**, **servicios** e **interfaz**.
+
+### 3.1 Dominio
+
+`OrdenServicio` guarda el id del cliente y del equipo (no los objetos), por eso las relaciones van punteadas.
 
 ```mermaid
 classDiagram
-    direction TB
+    direction LR
 
-    %% ---------- DOMINIO ----------
     class EstadoOrden {
         <<enumeration>>
         RECIBIDO
@@ -16,179 +62,138 @@ classDiagram
     }
 
     class Cliente {
-        -str _id_cliente
-        -str _nombre
-        -str _telefono
-        -str _correo
-        +id_cliente() str
-        +nombre() str
-        +telefono() str
-        +correo() str
-        +to_dict() dict
-        +from_dict(datos) Cliente
+        -id_cliente
+        -nombre
+        -telefono
+        -correo
     }
 
     class Equipo {
-        -str _id_equipo
-        -str _cliente_id
-        -str _tipo
-        -str _marca
-        -str _modelo
-        -str _falla_reportada
-        +id_equipo() str
-        +cliente_id() str
-        +tipo() str
-        +marca() str
-        +modelo() str
-        +falla_reportada() str
-        +to_dict() dict
-        +from_dict(datos) Equipo
+        -id_equipo
+        -cliente_id
+        -tipo
+        -marca
+        -modelo
+        -falla_reportada
     }
 
     class OrdenServicio {
-        -str _id_orden
-        -str _cliente_id
-        -str _equipo_id
-        -str _fecha
-        -str _falla_reportada
-        -str _diagnostico
-        -float _costo
-        -EstadoOrden _estado
-        -str _fecha_entrega
-        +id_orden() str
-        +estado() EstadoOrden
-        +diagnostico() str
-        +costo() float
-        +fecha_entrega() str
+        -id_orden
+        -cliente_id
+        -equipo_id
+        -fecha
+        -diagnostico
+        -costo
+        -estado
+        -fecha_entrega
         +puede_pasar_a(nuevo) bool
-        +cambiar_estado(nuevo) void
-        +registrar_diagnostico(texto, costo) void
-        +registrar_entrega() void
-        +to_dict() dict
-        +from_dict(datos) OrdenServicio
+        +cambiar_estado(nuevo)
+        +registrar_diagnostico(texto, costo)
+        +registrar_entrega(fecha)
     }
 
-    class ACDCError {
-        <<exception>>
-    }
-    class ValidacionError {
-        <<exception>>
-    }
-    class EntidadNoEncontradaError {
-        <<exception>>
-    }
-    class TransicionInvalidaError {
-        <<exception>>
-    }
+    Cliente "1" <.. "0..*" Equipo : cliente_id
+    Cliente "1" <.. "0..*" OrdenServicio : cliente_id
+    Equipo "1" <.. "0..*" OrdenServicio : equipo_id
+    OrdenServicio --> EstadoOrden : estado
+```
 
-    %% ---------- SERVICIOS ----------
-    class DataManager {
-        -Path ruta_datos
-        +cargar_clientes() list~Cliente~
-        +cargar_equipos() list~Equipo~
-        +cargar_ordenes() list~OrdenServicio~
-        +guardar_clientes(clientes) void
-        +guardar_equipos(equipos) void
-        +guardar_ordenes(ordenes) void
-    }
+**Excepciones** (todas heredan de `ACDCError`, así la interfaz captura un solo tipo de error):
+
+```mermaid
+classDiagram
+    direction LR
+    ACDCError <|-- ValidacionError
+    ACDCError <|-- EntidadNoEncontradaError
+    ACDCError <|-- TransicionInvalidaError
+```
+
+### 3.2 Servicios y persistencia
+
+```mermaid
+classDiagram
+    direction LR
 
     class AppService {
-        -DataManager data_manager
-        +registrar_cliente(nombre, telefono, correo) Cliente
-        +actualizar_cliente(id, nombre, telefono, correo) Cliente
-        +eliminar_cliente(id) void
-        +buscar_cliente(texto) list~Cliente~
-        +listar_clientes() list~Cliente~
-        +registrar_equipo(cliente_id, tipo, marca, modelo, falla) Equipo
-        +actualizar_equipo(id, cliente_id, tipo, marca, modelo, falla) Equipo
-        +eliminar_equipo(id) void
-        +buscar_equipo(texto) list~Equipo~
-        +listar_equipos_de_cliente(cliente_id) list~Equipo~
-        +crear_orden(cliente_id, equipo_id, falla) OrdenServicio
-        +registrar_diagnostico(id_orden, diagnostico, costo) OrdenServicio
-        +actualizar_estado(id_orden, estado) OrdenServicio
-        +registrar_entrega(id_orden) OrdenServicio
-        +buscar_orden(codigo, cliente, estado) list~OrdenServicio~
-        +listar_ordenes() list~OrdenServicio~
-        +listar_estados() list~str~
-        +estadisticas() dict
+        +registrar_cliente()
+        +actualizar_cliente()
+        +eliminar_cliente()
+        +buscar_cliente()
+        +registrar_equipo()
+        +actualizar_equipo()
+        +eliminar_equipo()
+        +buscar_equipo()
+        +crear_orden()
+        +registrar_diagnostico()
+        +actualizar_estado()
+        +registrar_entrega()
+        +buscar_orden()
+        +estadisticas()
     }
 
-    %% ---------- INTERFAZ ----------
-    class ACDCTheme {
-        <<constantes>>
-        BG
-        BG_LIGHT
-        SURFACE
-        WHITE
-        MUTED
+    class DataManager {
+        +cargar_clientes()
+        +guardar_clientes()
+        +cargar_equipos()
+        +guardar_equipos()
+        +cargar_ordenes()
+        +guardar_ordenes()
     }
+
+    class Entidades {
+        <<Cliente · Equipo · OrdenServicio>>
+    }
+
+    AppService --> DataManager : guarda y carga con
+    AppService ..> Entidades : crea y valida
+    DataManager ..> Entidades : convierte JSON ↔ objetos
+```
+
+### 3.3 Interfaz
+
+```mermaid
+classDiagram
+    direction TB
 
     class VentanaPrincipal {
-        -AppService app_service
-        -dict pages
-        +show_page(nombre) void
-        -_refresh_home_stats() void
+        +show_page(nombre)
     }
-
     class ClientesFrame
     class EquiposFrame
     class OrdenesFrame
     class DiagnosticoFrame
     class EntregaFrame
     class Tabla {
-        +cargar(filas) void
-        +seleccionado() tuple
+        +cargar(filas)
+        +seleccionado()
     }
     class CLI {
-        -AppService app
-        +ejecutar() void
+        +ejecutar()
     }
+    class AppService
 
-    %% ---------- RELACIONES ----------
-    ValidacionError --|> ACDCError
-    EntidadNoEncontradaError --|> ACDCError
-    TransicionInvalidaError --|> ACDCError
-
-    OrdenServicio --> EstadoOrden : tiene estado
-    Equipo "0..*" --> "1" Cliente : pertenece a
-    OrdenServicio "0..*" --> "1" Cliente : solicitada por
-    OrdenServicio "0..*" --> "1" Equipo : atiende
-
-    OrdenServicio ..> ValidacionError : lanza
-    OrdenServicio ..> TransicionInvalidaError : lanza
-    AppService ..> EntidadNoEncontradaError : lanza
-
-    AppService --> DataManager : persiste con
-    AppService o-- Cliente
-    AppService o-- Equipo
-    AppService o-- OrdenServicio
-    DataManager ..> Cliente : serializa
-    DataManager ..> Equipo : serializa
-    DataManager ..> OrdenServicio : serializa
-
-    VentanaPrincipal --> AppService : usa
     VentanaPrincipal *-- ClientesFrame
     VentanaPrincipal *-- EquiposFrame
     VentanaPrincipal *-- OrdenesFrame
     VentanaPrincipal *-- DiagnosticoFrame
     VentanaPrincipal *-- EntregaFrame
-    VentanaPrincipal ..> ACDCTheme : estilos
-    ClientesFrame --> AppService
-    EquiposFrame --> AppService
-    OrdenesFrame --> AppService
-    DiagnosticoFrame --> AppService
-    EntregaFrame --> AppService
-    ClientesFrame *-- Tabla
-    EquiposFrame *-- Tabla
-    OrdenesFrame *-- Tabla
-    DiagnosticoFrame *-- Tabla
-    EntregaFrame *-- Tabla
-    CLI --> AppService : usa
+
+    ClientesFrame ..> Tabla : usa
+    EquiposFrame ..> Tabla : usa
+    OrdenesFrame ..> Tabla : usa
+    DiagnosticoFrame ..> Tabla : usa
+    EntregaFrame ..> Tabla : usa
+
+    VentanaPrincipal ..> AppService : usa
+    CLI ..> AppService : usa
 ```
 
-**Lectura rápida del diagrama:**
-- **Dominio:** `Cliente`, `Equipo` y `OrdenServicio` encapsulan sus datos. `EstadoOrden` controla el flujo de estados.
-- **Servicios:** `AppService` es la única puerta de entrada para la interfaz, y `DataManager` es el único que toca los JSON.
-- **Interfaz:** `VentanaPrincipal` contiene los cinco formularios, que comparten la clase `Tabla`. `CLI` es la alternativa en consola.
-- **Excepciones:** las tres heredan de `ACDCError`.
+> Los cinco frames y la `CLI` reciben el mismo `AppService`; por claridad solo se dibuja la flecha de `VentanaPrincipal` y `CLI`.
+
+## 4. Decisiones de diseño
+
+- **Encapsulamiento:** las entidades guardan sus datos en atributos privados y los exponen con `@property`. Todas las validaciones están en el constructor.
+- **Una sola puerta de entrada:** la interfaz solo habla con `AppService`.
+- **Persistencia aislada:** únicamente `DataManager` lee y escribe JSON. Cambiar el formato no afecta al resto.
+- **Excepciones propias:** `ACDCError` y sus hijas permiten mostrar mensajes claros sin que la ventana se cierre.
+- **Dos interfaces, un mismo servicio:** `python -m src.main` abre la GUI y `python -m src.main --cli` abre la consola.
