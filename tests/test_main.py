@@ -32,3 +32,4 @@ class TestPuntoDeEntrada(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+# Practica de contribución realizada por Fernando Medina Morales
