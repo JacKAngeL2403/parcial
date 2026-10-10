@@ -2,8 +2,8 @@
 import os
 import sys
 
-if _package_ in (None, ""):
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(_file_)))
+if __package__ in (None, ""):
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
     from src.services.app_service import AppService
@@ -16,18 +16,18 @@ else:
 def main() -> None:
     app = AppService(DataManager())
     if "--cli" in sys.argv:
-        if _package_ in (None, ""):
+        if __package__ in (None, ""):
             from src.ui.cli_interface import CLI
         else:
             from .ui.cli_interface import CLI
         CLI(app).ejecutar()
     else:
-        if _package_ in (None, ""):
+        if __package__ in (None, ""):
             from src.ui.main_window import iniciar_gui
         else:
             from .ui.main_window import iniciar_gui
         iniciar_gui(app)
 
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     main()
